@@ -1,89 +1,173 @@
-# House Price Prediction
+# 🏠 House Price Prediction
 
-A machine learning project focused on predicting residential sale prices from property characteristics.
+This is my project for the Kaggle **House Prices: Advanced Regression Techniques** competition.
 
-## Project overview
+The main goal is to predict the `SalePrice` of the houses from the test dataset. Since the value I want to predict is numerical, this is a regression problem.
 
-The project uses housing data that describes each property through a broad mix of numerical and categorical attributes. The prediction target is `SalePrice`, making this a supervised regression problem.
+## 📂 Dataset
 
-## Goal
+The project contains:
 
-The goal is to predict the sale price of every house in the test set. For each `Id`, the final submission must provide a predicted value for the `SalePrice` variable.
+- `train.csv` — 1,460 houses and their sale prices;
+- `test.csv` — 1,459 houses without sale prices;
+- `data_description.txt` — description of all the features;
+- `sample_submission.csv` — example of the format required by Kaggle.
 
-## Evaluation metric
+The dataset has information about each house, such as its size, quality, neighborhood, construction year, garage, basement, and number of bathrooms.
 
-Predictions are evaluated using [Root Mean Squared Error (RMSE)](https://en.wikipedia.org/wiki/Root-mean-square_deviation) between the logarithm of the predicted sale price and the logarithm of the observed sale price:
+## 🔍 Exploratory Data Analysis
 
-```text
-RMSE(log(predicted SalePrice), log(observed SalePrice))
-```
+I started by analyzing `SalePrice`, which is the target variable.
 
-Using logarithms gives errors on lower-priced and higher-priced houses a more comparable influence on the final score.
+The distribution is right-skewed. The mean price is approximately **$180,921**, while the median is **$163,000**. The mean is higher because there are some houses with much higher prices.
 
-## Exploratory analysis
+I then checked the relationship between `SalePrice` and several features:
 
-The current analysis investigates the target distribution and the relationships between sale price and several candidate predictors, including:
+| Feature | Correlation with SalePrice |
+|---|---:|
+| `LotArea` | 0.264 |
+| `GrLivArea` | 0.709 |
+| `YearBuilt` | 0.523 |
+| `YearRemodAdd` | 0.507 |
+| `DiffYear` | -0.218 |
+| `YearsSinceRemodel` | -0.509 |
 
-- lot size (`LotArea`)
-- above-ground living area (`GrLivArea`)
-- overall material and finish quality (`OverallQual`)
-- construction and remodeling years (`YearBuilt`, `YearRemodAdd`)
+`GrLivArea` has a much stronger relationship with the sale price than `LotArea`. The boxplot for `OverallQual` also shows that houses with higher quality usually have higher prices.
 
-It also explores feature engineering based on property age and remodeling history, together with missing-value patterns such as those found in `LotFrontage`.
+Correlation does not prove that one variable causes another, but it helps me decide which features may be useful for a model.
 
-## Dataset
+## 🧩 New features and missing values
 
-The repository includes the tabular data and accompanying feature descriptions:
-
-- `train.csv` — 1,460 properties, 80 non-target columns, and the `SalePrice` target
-- `test.csv` — 1,459 properties with the same 80 non-target columns
-- `data_description.txt` — definitions and possible values for each feature
-- `sample_submission.csv` — expected prediction submission format
-
-The data covers property characteristics such as location, size, quality, condition, construction, amenities, and sale details.
-
-## Approach
-
-The notebook follows an exploratory, evidence-driven workflow:
-
-1. Load and inspect the training and test data.
-2. Examine the distribution and summary statistics of `SalePrice`.
-3. Visualize relationships between selected predictors and the target.
-4. Measure linear associations with correlation analysis.
-5. Derive time-based features related to construction and remodeling.
-6. Investigate missing values and suitable imputation strategies.
-
-These steps support informed feature selection and establish a basis for preprocessing, model training, and validation.
-
-## Modeling objectives
-
-- Prepare numerical and categorical data for regression modeling.
-- Identify useful predictors and engineer relevant features.
-- Compare regression approaches using validation aligned with the competition metric.
-- Generate one `SalePrice` prediction for each test-set `Id` without data leakage.
-
-## Getting started
-
-Install the core analysis libraries:
-
-```bash
-pip install numpy pandas matplotlib seaborn jupyter
-```
-
-Then open `housepriceprediction.ipynb` in Jupyter Notebook or JupyterLab and run the cells in order. Keep the CSV files in the same directory as the notebook.
-
-## Project structure
+I created two new features:
 
 ```text
-.
+DiffYear = YearRemodAdd - YearBuilt
+YearsSinceRemodel = YrSold - YearRemodAdd
+```
+
+I also investigated the missing values from `LotFrontage`.
+
+The mean `LotFrontage` is approximately **70.05 ft**, and the median is **69 ft**. Because the distribution is right-skewed, I used median imputation in the preprocessing pipeline.
+
+The median frontage is different from one neighborhood to another. I tested adding `LotFrontage` to the model, but the validation MAE increased from **$21,253.93** to **$21,604.66**, so it did not improve the model in this version.
+
+## 🤖 Models
+
+I used an 80/20 train-validation split with `random_state=42` and tested three types of regression models:
+
+- Linear Regression;
+- Decision Tree Regressor;
+- Random Forest Regressor.
+
+I used **Mean Absolute Error (MAE)** to compare the local validation results. A lower MAE means that the predictions are closer to the real prices.
+
+| Model | Validation MAE |
+|---|---:|
+| Linear Regression | $28,028.15 |
+| Decision Tree | $29,779.10 |
+| Decision Tree (`max_depth=7`) | $25,886.22 |
+| Random Forest | $22,945.75 |
+| Random Forest + `Neighborhood` | $21,253.93 |
+| Random Forest + `LotFrontage` | $21,604.66 |
+| Random Forest V2 | **$18,254.15** |
+
+The first Decision Tree had a training MAE of only **$50.50**, but its validation MAE was **$29,779.10**. This showed that the model was overfitting. Limiting the tree depth improved the validation result.
+
+Random Forest performed better than Linear Regression and Decision Tree for the features I tested.
+
+## ⚙️ Preprocessing and model improvements
+
+I added `Neighborhood` as a categorical feature and used one-hot encoding. This reduced the Random Forest validation MAE from **$22,945.75** to **$21,253.93**.
+
+For the next version, I added:
+
+- `TotalBsmtSF`;
+- `GarageCars`;
+- `FullBath`.
+
+With these features, the validation MAE decreased to **$18,254.15**.
+
+The preprocessing is included in a scikit-learn pipeline. It uses:
+
+- `SimpleImputer` with the median for numerical missing values;
+- `OneHotEncoder` for `Neighborhood`;
+- `ColumnTransformer` for applying the transformations to the correct columns;
+- `RandomForestRegressor` for the final model.
+
+## 📈 Cross-validation and Grid Search
+
+I used five-fold cross-validation to get a more reliable estimate of the model performance.
+
+- Average cross-validation MAE: **$19,462.02**;
+- Best Grid Search MAE: **$19,400.78**;
+- Best parameters: `n_estimators=200` and `max_depth=None`.
+
+Grid Search produced only a small improvement. Adding useful features had a larger effect on the model than changing these parameters.
+
+## 📏 Evaluation metric
+
+I currently use MAE for the local experiments because it is easy to understand in dollars.
+
+The Kaggle competition uses **RMSLE**, so the local MAE results cannot be compared directly with the Kaggle leaderboard score. Adding RMSLE to the notebook is one of my next steps.
+
+## 📦 Submission files
+
+The notebook creates three submission files:
+
+- `submission.csv` — first Random Forest submission;
+- `submission_v2.csv` — model with the additional features;
+- `submission_v3.csv` — model selected with Grid Search.
+
+Each submission contains the two columns required by Kaggle:
+
+```text
+Id, SalePrice
+```
+
+## 🗂️ Project structure
+
+```text
+home-data-for-ml-course/
 ├── housepriceprediction.ipynb
 ├── train.csv
 ├── test.csv
 ├── data_description.txt
 ├── sample_submission.csv
+├── submission.csv
+├── submission_v2.csv
+├── submission_v3.csv
 └── README.md
 ```
 
-## Tech stack
+## 🛠️ Libraries used
 
-Python · NumPy · pandas · Matplotlib · Seaborn · Jupyter
+- NumPy
+- pandas
+- Matplotlib
+- Seaborn
+- scikit-learn
+- Jupyter Notebook
+
+## ▶️ How to run the project
+
+Install the libraries:
+
+```bash
+pip install numpy pandas matplotlib seaborn scikit-learn jupyter
+```
+
+Start Jupyter Notebook:
+
+```bash
+jupyter notebook
+```
+
+Open `housepriceprediction.ipynb` and run the cells in order. The CSV files need to be in the same folder as the notebook.
+
+## 🚧 Next steps
+
+- add RMSLE as an evaluation metric;
+- test neighborhood-based imputation for `LotFrontage`;
+- try more features and compare their cross-validation results;
+- retrain the final pipeline on all training rows;
+- continue improving the Kaggle score.
